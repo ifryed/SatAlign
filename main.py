@@ -50,17 +50,10 @@ def main(video_path: any = 0):
     st = time.time()
     c = 0
     conf = 1000
-    while video.isOpened():
-        loop_time = time.time()
-        # def mainLoop():
-        #     global st,c
-        #     threading.Timer(interval, mainLoop).start()
-        ret, frame = video.read()
-        # frame = cv2.resize(frame, (0, 0), fx=.25, fy=0.25)
 
-        if not ret:
-            video.release()
-            break
+    while video.isOpened():
+        st = time.time()
+        ret, frame = video.read()
 
         frame = frame[:, :, [2, 1, 0]]
 
@@ -68,57 +61,25 @@ def main(video_path: any = 0):
             break
 
         bld.addFrame(frame)
-
-        if bld.buffFull():
-            # plt.cla()
-            _, _, frame1 = bld.locateBlink()
-            # print(bld.getAzimut())
-            x, y = bld.getPoint()
-            avx, avy = bld.getAvgPoint()
-
-            disp_frame = frame
-            # plt.imshow(disp_frame, cmap='gray')
-            # plt.plot(y * scale_factor, x * scale_factor, '*r')
-            # plt.plot(avy * scale_factor, avx * scale_factor, 'xb')
-            conf = bld.confidence()
-            # conf = "Confidence: {:.3f}".format(conf)
-            # plt.title(conf, color='red', fontsize=20, weight='bold')
-            # plt.xlim(0, bld.w_mini - 1)
-            # plt.ylim(0, bld.h_mini - 1)
-            # plt.pause(0.1)
+        bld.locateBlink()
+        x, y = bld.getPoint()
+        conf = bld.confidence()
 
         et = time.time()
         c_fps = 1 / (et - st)
-        print("\r{}: FPS: {:.3f} Conf: {:.3f}".format(c, c_fps, conf), end='')
-        if bld.buffFull():
-            print("\t({:.3f},{:.3f})".format(x, y), end='')
-
-        if conf<5:
-            f=1
-            print()
-            plt.cla()
-            plt.imshow(cv2.resize(frame, (bld.w_mini*f, bld.h_mini*f)), cmap='gray')
-            # plt.plot(y * bld.scale_y, x * bld.scale_x, '*r')
-            # plt.plot(avy * bld.scale_y, avx * bld.scale_x, 'xb')
-            plt.plot(y*f, x*f, '*r')
-            plt.plot(avy*f, avx*f, 'xb')
-            # plt.show()
-            plt.pause(.01)
-
-        st = time.time()
-        c += 1
-
-        # if bld.buffFull() and (c % 10 == 0):
-        #     f=cv2.circle(frame, (int(x), int(y)), 20, (0, 255, 0), 5)
-        #     f = f.get()
-        #     cv2.imwrite('out/{}.png'.format(time.time()), f[:, :, [2, 1, 0]])
-
         bld.updateFPS(c_fps)
-        # while time.time() - loop_time < interval:
-        #     pass
-    # mainLoop()
+        print("\r{}: FPS: {:.3f} Conf: {:.3f}\t{:.3f},{:.3f}".format(c, c_fps, conf, x, y), end='')
+        c += 1
+        # if conf < 10:
+        #     print()
+        #     print("Conf:{:.2f}\t{:.3f},{:.3f}".format(conf, x, y))
+        #     plt.cla()
+        #     plt.imshow(frame)
+        #     plt.plot(y, x, '*r')
+        #     # plt.plot(avy, avx, 'xb')
+        #     plt.pause(.01)
 
-    # video.release()
+    video.release()
 
 
 if __name__ == '__main__':
