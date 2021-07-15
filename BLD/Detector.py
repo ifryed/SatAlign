@@ -10,8 +10,10 @@ class BLDetector():
     def __init__(self, freq, h, w, buff_scale=3, fps=30):
         self.freq = freq
         self.fps = fps
-        self.buffer_len = 10
-        self.h_mini, self.w_mini = h // buff_scale, w // buff_scale
+        self.buffer_len = 30
+        # self.h_mini, self.w_mini = h // buff_scale, w // buff_scale
+        self.h_mini, self.w_mini = 32 * 3, 32 * 3
+        self.scale_x, self.scale_y = h / self.h_mini, w / self.w_mini
         self.buffer = np.zeros((self.h_mini, self.w_mini, self.buffer_len))
         self.img_buffer = np.zeros((h, w, self.buffer_len))
 
@@ -23,35 +25,37 @@ class BLDetector():
         self.mom_x, self.mom_y = 0, 0
         self.x_mean, self.y_mean = 100, 100
         self.avg_x, self.avg_y = 0, 0
+        self.sensitivity = self.freq * 0.2
 
     def updateFPS(self, n_fps):
-        alpha = 0.6
+        alpha = 1 / self.buffer_len
         self.fps = self.fps * alpha + (1 - alpha) * n_fps
 
     def addFrame(self, frame):
-        q_factor = 20
+        q_factor = 1
         # gray = cvtColor(frame, COLOR_BGR2GRAY).astype(np.float32)
         hsv = cvtColor(frame, COLOR_RGB2HSV).astype(np.float32)
         hue, _, gray = [x.squeeze() for x in np.split(hsv, 3, axis=2)]
         # gray = 255*gray/gray.max
-        mask = (hue < 20) + (hue > 160)
-        mask = mask * (gray > 40)
+        # mask = (hue < 20) + (hue > 160)
+        # mask = mask * (gray > 40)
         # gray = gray * mask
+        # gray[gray < 40] = 0
         gray = (gray // q_factor) * q_factor
         curr_idx = self.counter % self.buffer_len
-        if self.first_time:
-            self.first_time = False
-            self.img_buffer[:, :, curr_idx] = gray
-            self.img_buffer[:, :, -1] = gray
+        # if self.first_time:
+        #     self.first_time = False
+        #     self.img_buffer[:, :, curr_idx] = gray
+        #     self.img_buffer[:, :, -1] = gray
 
-        img_idx = self.counter - 1
-        first_img = self.img_buffer[:, :, img_idx % self.buffer_len]
+        # img_idx = self.counter - 1
+        # first_img = self.img_buffer[:, :, img_idx % self.buffer_len]
         # aligned_fs = align(gray, first_img)
         aligned_fs = gray
         aligned = resize(aligned_fs, (self.w_mini, self.h_mini))
 
-        self.img_buffer[:, :, curr_idx] = aligned_fs
-        self.buffer[:, :, curr_idx] = np.square(aligned)
+        # self.img_buffer[:, :, curr_idx] = aligned_fs
+        self.buffer[:, :, curr_idx] = aligned  # np.square(aligned)
         self.counter += 1
 
     def _updateLocation(self):
@@ -76,10 +80,11 @@ class BLDetector():
     def locateBlink(self):
         b_mean = self.buffer.mean(axis=2)
         buff_diff = self.buffer - b_mean[..., np.newaxis]
+        buff_diff[buff_diff < 10] = 0
         buff_dig = (buff_diff > 0) - 0.5
 
         freq_mat = self._getFreq(buff_dig)
-        f_2d = (np.abs(freq_mat - self.freq) <= .03).astype(np.float32)
+        f_2d = (np.abs(freq_mat - self.freq) <= 3 + 0 * self.sensitivity).astype(np.float32)
         k_size = 7
         filt = filter2D(f_2d, -1, np.ones((k_size, k_size)))
 
@@ -120,12 +125,11 @@ class BLDetector():
         """
 
         n = signal.shape[-1]
-        k = np.arange(n)
         T = n / self.fps
-        frq = k / T
+        frq = np.arange(n) / T
         frq = frq[: len(frq) // 2]
 
-        Y = np.fft.fft(signal) / n
+        Y = np.fft.fft(signal, axis=2) / n
         Y = Y[:, :, :n // 2]
 
         max_arg = abs(Y).argmax(axis=2)

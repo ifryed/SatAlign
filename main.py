@@ -34,7 +34,7 @@ def displayPano(img1, img2, p1, p2):
 
 def main(video_path: any = 0):
     global st, c
-    plt.ion()
+    # plt.ion()
     video = cv2.VideoCapture(video_path)
 
     fps = video.get(cv2.CAP_PROP_FPS)
@@ -42,21 +42,21 @@ def main(video_path: any = 0):
     video.set(3, 640)
     video.set(4, 480)
 
-    h, w = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))//4, int(video.get(cv2.CAP_PROP_FRAME_WIDTH))//4
+    h, w = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT)), int(video.get(cv2.CAP_PROP_FRAME_WIDTH))
     print(h, w)
     scale_factor = 1
     bld = BLDetector(kDST_FRQ, h, w, scale_factor, fps)
 
     st = time.time()
     c = 0
-
+    conf = 1000
     while video.isOpened():
         loop_time = time.time()
         # def mainLoop():
         #     global st,c
         #     threading.Timer(interval, mainLoop).start()
         ret, frame = video.read()
-        frame = cv2.resize(frame,(0,0),fx=.25,fy=0.25)
+        # frame = cv2.resize(frame, (0, 0), fx=.25, fy=0.25)
 
         if not ret:
             video.release()
@@ -69,28 +69,42 @@ def main(video_path: any = 0):
 
         bld.addFrame(frame)
 
-        if False or bld.buffFull():
-            plt.cla()
+        if bld.buffFull():
+            # plt.cla()
             _, _, frame1 = bld.locateBlink()
             # print(bld.getAzimut())
             x, y = bld.getPoint()
             avx, avy = bld.getAvgPoint()
 
             disp_frame = frame
-            plt.imshow(disp_frame, cmap='gray')
-            plt.plot(y * scale_factor, x * scale_factor, '*r')
-            plt.plot(avy * scale_factor, avx * scale_factor, 'xb')
+            # plt.imshow(disp_frame, cmap='gray')
+            # plt.plot(y * scale_factor, x * scale_factor, '*r')
+            # plt.plot(avy * scale_factor, avx * scale_factor, 'xb')
             conf = bld.confidence()
-            conf = "Confidence: {:.3f}".format(conf)
-            plt.title(conf, color='red', fontsize=20, weight='bold')
-            # plt.text(100, 100, conf, color='red', fontsize=20, weight='bold')
-            plt.pause(0.1)
+            # conf = "Confidence: {:.3f}".format(conf)
+            # plt.title(conf, color='red', fontsize=20, weight='bold')
+            # plt.xlim(0, bld.w_mini - 1)
+            # plt.ylim(0, bld.h_mini - 1)
+            # plt.pause(0.1)
 
         et = time.time()
         c_fps = 1 / (et - st)
-        print("\r{}: FPS: {:.3f} Conf: {:.3f}".format(c, c_fps, bld.confidence()), end='')
+        print("\r{}: FPS: {:.3f} Conf: {:.3f}".format(c, c_fps, conf), end='')
         if bld.buffFull():
             print("\t({:.3f},{:.3f})".format(x, y), end='')
+
+        if conf<5:
+            f=1
+            print()
+            plt.cla()
+            plt.imshow(cv2.resize(frame, (bld.w_mini*f, bld.h_mini*f)), cmap='gray')
+            # plt.plot(y * bld.scale_y, x * bld.scale_x, '*r')
+            # plt.plot(avy * bld.scale_y, avx * bld.scale_x, 'xb')
+            plt.plot(y*f, x*f, '*r')
+            plt.plot(avy*f, avx*f, 'xb')
+            # plt.show()
+            plt.pause(.01)
+
         st = time.time()
         c += 1
 
@@ -100,14 +114,15 @@ def main(video_path: any = 0):
         #     cv2.imwrite('out/{}.png'.format(time.time()), f[:, :, [2, 1, 0]])
 
         bld.updateFPS(c_fps)
-        while time.time() - loop_time < interval:
-            pass
+        # while time.time() - loop_time < interval:
+        #     pass
     # mainLoop()
 
     # video.release()
 
 
 if __name__ == '__main__':
+    plt.ion()
     # kDST_FRQ = 1
     # main('data/1hz_cut.mp4')
     # kDST_FRQ = 5
@@ -119,5 +134,5 @@ if __name__ == '__main__':
     # kDST_FRQ = 2
     # main('data/laser_blink_bed.mp4')
 
-    kDST_FRQ = 0.1
-    main(1)
+    kDST_FRQ = 5
+    main(0)
