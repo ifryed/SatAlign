@@ -1,12 +1,11 @@
 import time
-
 import cv2
-import matplotlib.pyplot as plt
 import sys
 import numpy as np
-import skimage.measure
-
+import picamera
+import os
 from BLD.Detector import BLDetector
+from BLD.utils import Logger
 
 import threading
 
@@ -15,96 +14,112 @@ interval = 1 / 0.2
 global kDST_FRQ
 kDST_FRQ = 1.0
 
+SENSOR_MODE = 7  # 640x480, partial FoV, binning 2x2
+RESOLUTION = (640, 480)
+FRAME_RATE = 120
+fwidth = (RESOLUTION[0] + 31) // 32 * 32
+fheight = (RESOLUTION[1] + 15) // 16 * 16
 
-def displayPano(img1, img2, p1, p2):
-    h, w = img1.shape[:2]
-    canvas = np.zeros((h, 2 * w))
-    canvas[:, :w] = img1
-    canvas[:, -w:] = img2
 
-    plt.imshow(canvas, cmap='gray')
-    plt.plot(p1[:, 0], p1[:, 1], '*r')
-    plt.plot(p2[:, 0] + w, p2[:, 1], '*g')
+class RecordingOutput(object):
+    """
+    Object mimicking file-like object so start_recording will write each frame to it.
+    See: https://picamera.readthedocs.io/en/release-1.12/api_camera.html#picamera.PiCamera.start_recording
+    """
+    def __init__(self,bld):
+        self.bld = bld
+        self.frame_c = 0
+        self.st = time.time()
+        self.logger = Logger('out/log.txt')
+        
+    def write(self, buf):
+        global frame_cnt, t_prev
+        conf= 10000
+        y_data = np.frombuffer(buf, dtype=np.uint8, count=fwidth * fheight).reshape((fheight, fwidth))
+        self.bld.addFrame(y_data)
+        #y_data = np.frombuffer(buf, dtype=np.uint8, count=fwidth * fheight * 3).reshape((fheight, fwidth,3))
+        
+        _,_,diff = self.bld.locateBlink()
+        x, y = self.bld.getPoint()
+#             avx, avy = self.bld.getAvgPoint()
+        conf = self.bld.confidence()
 
-    for pa, pb in zip(p1, p2):
-        plt.plot([pa[0], w + pb[0]], [pa[1], pb[1]], '-b')
+        while time.time()-self.st < 1/(2*self.bld.freq):
+           pass
+        
+        et = time.time()
+        c_fps = 1 / (et - self.st)
+        self.st = et
+        self.bld.updateFPS(c_fps)
+        
+        print("\r{}:\tFPS: {:.3f}\tConf: {:.3f}".format(self.frame_c, c_fps, conf), end='')
+        if False and self.bld.buffFull():
+            print("\t({:.3f},{:.3f})".format(x, y), end='')
 
-    plt.show()
+        if True or conf < 5:
+            print()
+#         if self.bld.buffFull() and (self.frame_c % 10 == 0):
+# #             f=cv2.circle(frame, (int(x), int(y)), 20, (0, 255, 0), 5)
+# #             f = f.get()
+#             cv2.imwrite('out/{}.bmp'.format(self.frame_c), 255*frame1)
+#            f=y_data.copy()
+            x,y = x*self.bld.scale,y*self.bld.scale
+#            f[int(y-10):int(y+10),int(x-10):int(x+10)]=255
+#            cv2.imwrite('out/{}.bmp'.format(self.frame_c), (255*diff/diff.max()).astype(np.uint8))
+            if self.frame_c % 10 == 0:
+                cv2.imwrite('out/{}.bmp'.format(self.frame_c),y_data)
+#            print("{:.0f},{:.0f}:{:.3f}".format(x,y,conf))
+            self.logger.write(x,y,self.frame_c,self.frame_c%10 == 0)
+        
+        self.frame_c += 1
+        
+    def flush(self):
+        pass  # called at end of recording
 
 
 def main(video_path: any = 0):
     global st, c
-    plt.ion()
-    video = cv2.VideoCapture(video_path)
 
-    fps = video.get(cv2.CAP_PROP_FPS)
-    print("Video FPS: {:.3f}".format(fps))
-    video.set(3, 640)
-    video.set(4, 480)
-
-    h, w = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))//4, int(video.get(cv2.CAP_PROP_FRAME_WIDTH))//4
-    print(h, w)
-    scale_factor = 1
-    bld = BLDetector(kDST_FRQ, h, w, scale_factor, fps)
+    h,w = 480, 640
+#    print("Frame Size: {}X{}".format(h,w))
+    
+    scale_factor = 3
+    bld = BLDetector(kDST_FRQ, h, w, scale_factor, 30.)
+    print("Frame Size: {}x{}".format(bld.h_mini,bld.w_mini))
 
     st = time.time()
     c = 0
 
-    while video.isOpened():
-        loop_time = time.time()
-        # def mainLoop():
-        #     global st,c
-        #     threading.Timer(interval, mainLoop).start()
-        ret, frame = video.read()
-        frame = cv2.resize(frame,(0,0),fx=.25,fy=0.25)
-
-        if not ret:
-            video.release()
-            break
-
-        frame = frame[:, :, [2, 1, 0]]
-
-        if cv2.waitKey(1) & 0xFF == ord('q') or not ret:
-            break
-
-        bld.addFrame(frame)
-
-        if False or bld.buffFull():
-            plt.cla()
-            _, _, frame1 = bld.locateBlink()
-            # print(bld.getAzimut())
-            x, y = bld.getPoint()
-            avx, avy = bld.getAvgPoint()
-
-            disp_frame = frame
-            plt.imshow(disp_frame, cmap='gray')
-            plt.plot(y * scale_factor, x * scale_factor, '*r')
-            plt.plot(avy * scale_factor, avx * scale_factor, 'xb')
-            conf = bld.confidence()
-            conf = "Confidence: {:.3f}".format(conf)
-            plt.title(conf, color='red', fontsize=20, weight='bold')
-            # plt.text(100, 100, conf, color='red', fontsize=20, weight='bold')
-            plt.pause(0.1)
-
-        et = time.time()
-        c_fps = 1 / (et - st)
-        print("\r{}: FPS: {:.3f} Conf: {:.3f}".format(c, c_fps, bld.confidence()), end='')
-        if bld.buffFull():
-            print("\t({:.3f},{:.3f})".format(x, y), end='')
-        st = time.time()
-        c += 1
-
-        # if bld.buffFull() and (c % 10 == 0):
-        #     f=cv2.circle(frame, (int(x), int(y)), 20, (0, 255, 0), 5)
-        #     f = f.get()
-        #     cv2.imwrite('out/{}.png'.format(time.time()), f[:, :, [2, 1, 0]])
-
-        bld.updateFPS(c_fps)
-        while time.time() - loop_time < interval:
+    with picamera.PiCamera(
+        sensor_mode=SENSOR_MODE,
+        resolution=RESOLUTION,
+        framerate=FRAME_RATE) as camera:
+        
+        print('camera setup')
+        time.sleep(2)  
+        print('starting recording')
+        output = RecordingOutput(bld)
+        
+        camera.start_recording(output, 'yuv')
+#         camera.wait_recording(3)
+        while True:
             pass
-    # mainLoop()
+#             if cv2.waitKey(1) & 0xFF == ord('q'):
+#                 break
+#                 
+            
 
-    # video.release()
+#             if bld.buffFull() and (c % 10 == 0):
+#                 f=cv2.circle(frame, (int(x), int(y)), 20, (0, 255, 0), 5)
+#                 f = f.get()
+#                 cv2.imwrite('out/{}.png'.format(time.time()), f[:, :, [2, 1, 0]])
+
+        
+        
+        camera.stop_recording()
+        print("Done")
+        
+        
 
 
 if __name__ == '__main__':
@@ -118,6 +133,9 @@ if __name__ == '__main__':
     # main('data/laser_blink_cut.mp4')
     # kDST_FRQ = 2
     # main('data/laser_blink_bed.mp4')
-
-    kDST_FRQ = 0.1
-    main(1)
+    os.chdir('out')
+    for f in os.listdir():
+        os.remove(f)
+    os.chdir('../')
+    kDST_FRQ = 2
+    main()
