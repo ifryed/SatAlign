@@ -5,12 +5,15 @@ import matplotlib.pyplot as plt
 
 COLOR_BGR2GRAY = 6
 
+NMS_KERNEL = -np.ones((7, 7))
+NMS_KERNEL[2:-2, 2:-2] = 1
+
 
 class BLDetector():
     def __init__(self, freq, h, w, buff_scale=3, fps=30):
         self.freq = freq
         self.fps = fps
-        self.buffer_len = 10
+        self.buffer_len = 5
         self.h_mini, self.w_mini = h // buff_scale, w // buff_scale
         self.scale_x, self.scale_y = h / self.h_mini, w / self.w_mini
         self.buffer = np.zeros((self.h_mini, self.w_mini, self.buffer_len))
@@ -33,9 +36,9 @@ class BLDetector():
     def addFrame(self, frame):
         gray = cvtColor(frame, COLOR_RGB2GRAY).astype(np.float32)
         curr_idx = self.counter % self.buffer_len
-        # mini_gray = resize(gray, (self.w_mini, self.h_mini))
+        mini_gray = resize(gray, (self.w_mini, self.h_mini))
 
-        self.buffer[:, :, curr_idx] = gray
+        self.buffer[:, :, curr_idx] = mini_gray
         self.counter += 1
 
     def _updateLocation(self):
@@ -60,10 +63,13 @@ class BLDetector():
     def locateBlink(self):
         if not self.buffFull():
             return None
-        b_offset = max(1, int(self.fps / self.freq / 2))
+        # b_offset = max(1, int(self.fps / self.freq / 2))
+        b_offset = 1
 
         diff = np.abs(self.buffer[:, :, :-b_offset] - self.buffer[:, :, b_offset:])
         diff_mean = diff.mean(axis=2)
+
+        # diff_mean = filter2D(diff_mean, -1, NMS_KERNEL)
 
         freq_mat = diff_mean > diff_mean.max() * .95
         self.x_lst, self.y_lst = np.where(freq_mat)

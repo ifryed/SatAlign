@@ -1,43 +1,23 @@
-from cv2 import ORB_create, BFMatcher, NORM_HAMMING, RANSAC, findHomography, warpPerspective
-import numpy as np
+class Logger():
+    kFLUSH_CONST = 10
 
-def align(img, base_img):
-    # use ORB to detect keypoints and extract (binary) local
-    # invariant features
-    orb = ORB_create(500)
-    (kpsA, descsA) = orb.detectAndCompute((base_img).astype(np.uint8), None)
-    (kpsB, descsB) = orb.detectAndCompute((img).astype(np.uint8), None)
+    def __init__(self, path):
+        self.path = path
+        self.fd = open(self.path, 'w')
+        self.flush_counter = Logger.kFLUSH_CONST
 
-    # match the features
-    matcher = BFMatcher(NORM_HAMMING, crossCheck=True)
-    matches = matcher.match(descsA, descsB)
+    def write(self, x, y, time,has_image):
+        entry_str = "{:.0f},{:.0f},{:.0f},{}\n".format(x, y, time,int(has_image))
+        self.fd.write(entry_str)
 
-    # sort the matches by their distance (the smaller the distance,
-    # the "more similar" the features are)
-    matches = sorted(matches, key=lambda x: x.distance)
-    # keep only the top matches
-    keep = int(len(matches) * 0.40)
-    matches = matches[:keep]
+        self.flush_counter -= 1
+        if self.flush_counter == 0:
+            self.fd.flush()
+            self.flush_counter = Logger.kFLUSH_CONST
 
-    # allocate memory for the keypoints (x, y)-coordinates from the
-    # top matches -- we'll use these coordinates to compute our
-    # homography matrix
-    ptsA = np.zeros((len(matches), 2), dtype="float")
-    ptsB = np.zeros((len(matches), 2), dtype="float")
-    # loop over the top matches
-    for (i, m) in enumerate(matches):
-        # indicate that the two keypoints in the respective images
-        # map to each other
-        ptsA[i] = kpsA[m.queryIdx].pt
-        ptsB[i] = kpsB[m.trainIdx].pt
+    def close(self):
+        self.fd.flush()
+        self.fd.close()
 
-    # compute the homography matrix between the two sets of matched
-    # points
-    (H, mask) = findHomography(ptsB, ptsA, method=RANSAC)  # ,maxIters=100)
-    # (H, mask) = cv2.estimateAffine2D(ptsB, ptsA, )  # ,maxIters=100)
-    # use the homography matrix to align the images
-    (h, w) = base_img.shape[:2]
-    aligned = warpPerspective(img, H, (w, h))
-    # aligned = cv2.warpAffine(img, H, (w, h))
-
-    return aligned
+    def __del__(self):
+        self.close()

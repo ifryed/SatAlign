@@ -10,6 +10,8 @@ from BLD.Detector import BLDetector
 
 import threading
 
+from BLD.utils import Logger
+
 interval = 1 / 0.2
 
 global kDST_FRQ
@@ -51,6 +53,9 @@ def main(video_path: any = 0):
     c = 0
     conf = 1000
 
+    logger = Logger('out/log.txt')
+    ret, frame = video.read()
+    cv2.imwrite('out/base.bmp', frame)
     while video.isOpened():
         st = time.time()
         ret, frame = video.read()
@@ -65,20 +70,26 @@ def main(video_path: any = 0):
         x, y = bld.getPoint()
         conf = bld.confidence()
 
+        while time.time() - st < 1 / (2 * kDST_FRQ):
+            pass
         et = time.time()
         c_fps = 1 / (et - st)
         bld.updateFPS(c_fps)
-        print("\r{}: FPS: {:.3f} Conf: {:.3f}\t{:.3f},{:.3f}".format(c, c_fps, conf, x, y), end='')
+        # print("\r{}:\tFPS: {:.1f} Conf: {:.2f}\t{:.3f},{:.3f}".format(c, c_fps, conf, x, y), end='')
         c += 1
-        # if conf < 10:
-        #     print()
-        #     print("Conf:{:.2f}\t{:.3f},{:.3f}".format(conf, x, y))
-        #     plt.cla()
-        #     plt.imshow(frame)
-        #     plt.plot(y, x, '*r')
-        #     # plt.plot(avy, avx, 'xb')
-        #     plt.pause(.01)
+        if True or conf < 10:
+            # print()
+            # print("Conf:{:.2f}\t{:.3f},{:.3f}".format(conf, x, y))
+            plt.cla()
+            plt.imshow(frame)
+            plt.plot(y, x, 'og')
+            # plt.plot(avy, avx, 'xb')
+            plt.pause(.01)
+            logger.write(y, x, c, c % 10 == 0)
+            if c % 10 == 0:
+                cv2.imwrite('out/{}.bmp'.format(c), frame)
 
+    logger.close()
     video.release()
 
 
@@ -95,5 +106,5 @@ if __name__ == '__main__':
     # kDST_FRQ = 2
     # main('data/laser_blink_bed.mp4')
 
-    kDST_FRQ = 5
+    kDST_FRQ = 2
     main(0)
