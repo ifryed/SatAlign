@@ -6,8 +6,8 @@ class Logger():
         self.fd = open(self.path, 'w')
         self.flush_counter = Logger.kFLUSH_CONST
 
-    def write(self, x, y, time,has_image):
-        entry_str = "{:.0f},{:.0f},{:.0f},{}\n".format(x, y, time,int(has_image))
+    def write(self, x, y, time, has_image, conf=-1):
+        entry_str = "{:.0f},{:.0f},{:.0f},{},{:.1f}\n".format(x, y, time, int(has_image), conf)
         self.fd.write(entry_str)
 
         self.flush_counter -= 1
@@ -21,4 +21,3 @@ class Logger():
 
     def __del__(self):
         self.close()
-

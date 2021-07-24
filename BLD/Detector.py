@@ -1,6 +1,7 @@
 import numpy as np
 from cv2 import cvtColor, resize, filter2D, COLOR_BGR2HSV, COLOR_RGB2HSV
 
+
 class BLDetector():
     def __init__(self, freq, h, w, buff_scale=3, fps=30):
         self.freq = freq
@@ -9,7 +10,6 @@ class BLDetector():
         self.scale = buff_scale
         self.h_mini, self.w_mini = h // buff_scale, w // buff_scale
         self.buffer = np.zeros((self.h_mini, self.w_mini, self.buffer_len))
-        self.img_buffer = np.zeros((h, w, self.buffer_len))
 
         ## init
         self.counter = 0
@@ -20,13 +20,25 @@ class BLDetector():
         self.x_mean, self.y_mean = 100, 100
         self.avg_x, self.avg_y = 0, 0
 
+        self.stopped = False
+
     def updateFPS(self, n_fps):
-        alpha = 1/self.buffer_len
+        """
+        Updates the FPS based on RT readings
+        @param n_fps: The last FPS
+        @return: None
+        """
+        alpha = 1 / self.buffer_len
         self.fps = self.fps * alpha + (1 - alpha) * n_fps
 
     def addFrame(self, frame):
-        #q_factor = 1
-        #frame = (frame // q_factor) * q_factor
+        """
+        Added a new image to the image buffer
+        @param frame:
+        @return: None
+        """
+        # q_factor = 1
+        # frame = (frame // q_factor) * q_factor
         curr_idx = self.counter % self.buffer_len
         frame_mini = resize(frame, (self.w_mini, self.h_mini))
 
@@ -34,6 +46,10 @@ class BLDetector():
         self.counter += 1
 
     def _updateLocation(self):
+        """
+        Updates the current belived location of the laser
+        @return: None
+        """
         alpha = 0.8
         m_alpha = 0.5
         if len(self.x_lst) == 0:
@@ -49,20 +65,24 @@ class BLDetector():
         self.avg_y += self.mom_y
 
     def getFrame(self):
-        curr_idx = (self.counter - 1) % self.buffer_len
-        return self.img_buffer[:, :, curr_idx]
-    
-    def getFrame2(self):
+        """
+        Returns the last frame
+        @return: Last frame
+        """
         curr_idx = (self.counter - 1) % self.buffer_len
         return self.buffer[:, :, curr_idx]
 
     def locateBlink(self):
+        """
+        Calculates the location of the laser in the image.
+        @return: possible locations in X, Y, differance frame (for debug)
+        """
         if not self.buffFull():
-            return None,None,None
-        #b_offset = max(1,int(self.fps/self.freq/2))
+            return None, None, None
+        # b_offset = max(1,int(self.fps/self.freq/2))
         b_offset = 1
 
-        diff = np.abs(self.buffer[:,:,:-b_offset] - self.buffer[:,:,b_offset:])
+        diff = np.abs(self.buffer[:, :, :-b_offset] - self.buffer[:, :, b_offset:])
         diff_mean = diff.mean(axis=2)
 
         freq_mat = diff_mean > diff_mean.max() * 0.95
@@ -72,43 +92,55 @@ class BLDetector():
         return self.x_lst, self.y_lst, diff_mean[:]
 
     def getPoint(self):
+        """
+        Returns current location
+        @return: Coordinates-> x,y
+        """
         return [self.x_mean, self.y_mean]
 
     def getAvgPoint(self):
+        """
+        Returns \textit{ghost} location.
+        @return: Coordinates-> x,y
+        """
         return [self.avg_x, self.avg_y]
 
     def confidence(self):
+        """
+        Calculates the confidence of the current location.
+        The confidence is based on variance and momentum.
+        @return: Location confidence
+        """
         if len(self.y_lst) == 0:
             return 10000000
         var = self.y_lst.var() + self.x_lst.var()
-        # diff = np.sqrt(np.square(self.x_mean - self.avg_x) + np.square(self.y_mean - self.avg_y))
         diff = np.abs(self.mom_x) + np.abs(self.mom_y)
-        # print(np.abs(self.mom_x) + np.abs(self.mom_y))
 
         conf = var + diff
+
+        if conf < 1:
+            self.stopped = True
         return conf
 
     def getAzimut(self):
+        """
+        Returns the location of the detection in radians
+        @return: \theta _x,\theta _y
+        """
         y, x = self.avg_y, self.avg_x
         return np.arctan2(self.w_mini, (x - self.h_mini / 2)), \
                np.arctan2(self.h_mini, (y - self.w_mini / 2))
 
     def buffFull(self):
+        """
+        Returns the status of the buffer
+        @return: Returns the status of the buffer
+        """
         return self.counter > self.buffer_len
 
-    def _getFreq(self, signal):
+    def isRunning(self):
         """
-        https://stackoverflow.com/questions/55283610/how-do-i-get-the-frequencies-from-a-signal
+        Returns if the detection is still running
+        @return: Returns if the detection is still running
         """
-
-        n = signal.shape[-1]
-        T = n / self.fps
-        frq = np.arange(n) / T
-        frq = frq[: len(frq) // 2]
-
-        Y = np.fft.fft(signal) / n
-        Y = Y[:, :, :n // 2]
-
-        max_arg = np.abs(Y).argmax(axis=2)
-        freq_2d = frq[max_arg]
-        return freq_2d
+        return self.stopped
