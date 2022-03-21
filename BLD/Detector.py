@@ -143,4 +143,4 @@ class BLDetector():
         Returns if the detection is still running
         @return: Returns if the detection is still running
         """
-        return self.stopped
+        return not self.stopped

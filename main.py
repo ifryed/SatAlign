@@ -90,6 +90,8 @@ def main():
         while bld.isRunning():
             pass
 
+        if not bld.isRunning():
+            print([i*bld.scale for i in bld.getPoint()])
         camera.stop_recording()
         print("Done")
 
